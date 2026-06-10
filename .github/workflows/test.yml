@@ -1,0 +1,179 @@
+name: test
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, go${{ matrix.go-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        go-version:
+          - '1.26'
+          - '1.25'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Build CLI
+        run: go build ./cmd/...
+
+  integration:
+    name: integration (${{ matrix.os }}, go${{ matrix.go-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        go-version:
+          - '1.26'
+          - '1.25'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Install USB/IP prerequisites
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-common "linux-tools-$(uname -r)" "linux-modules-extra-$(uname -r)"
+
+      - name: Run integration tests
+        run: go test -v -count=1 -timeout 15m -exec sudo ./...
+
+  # The Azure kernel on hosted runners does not ship usbip-host, vhci-hcd,
+  # dummy_hcd, or libcomposite, so kernel-dependent tests need a nested VM
+  # running the generic kernel.
+  integration-linux-vm:
+    name: integration (linux generic kernel vm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache: true
+
+      - name: Build test binary
+        run: go test -c -o usbip.test .
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Boot Ubuntu VM
+        run: |
+          curl -fsSL -o vm.img https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+          qemu-img resize vm.img +8G
+          ssh-keygen -t ed25519 -N '' -f vmkey
+          cat > user-data <<EOF
+          #cloud-config
+          users:
+            - name: ci
+              sudo: ALL=(ALL) NOPASSWD:ALL
+              shell: /bin/bash
+              ssh_authorized_keys:
+                - $(cat vmkey.pub)
+          EOF
+          cloud-localds seed.img user-data
+          qemu-system-x86_64 -enable-kvm -cpu host -m 2048 -smp 2 \
+            -drive file=vm.img,format=qcow2,if=virtio \
+            -drive file=seed.img,format=raw,if=virtio \
+            -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22 \
+            -display none -daemonize -serial file:serial.log
+          cat > ssh_config <<EOF
+          Host vm
+            HostName 127.0.0.1
+            Port 2222
+            User ci
+            IdentityFile ./vmkey
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            LogLevel ERROR
+          EOF
+          for i in $(seq 1 60); do
+            if ssh -F ssh_config -o ConnectTimeout=5 vm true 2>/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "VM did not become reachable" >&2
+          exit 1
+
+      - name: Install USB/IP prerequisites in VM
+        run: |
+          ssh -F ssh_config vm 'cloud-init status --wait || true'
+          ssh -F ssh_config vm 'sudo apt-get -o DPkg::Lock::Timeout=300 update && sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y linux-tools-common "linux-tools-$(uname -r)" "linux-modules-extra-$(uname -r)"'
+
+      # Ubuntu kernels do not enable CONFIG_USB_DUMMY_HCD, so the module is
+      # built from the upstream stable source matching the VM kernel.
+      - name: Build dummy_hcd kernel module in VM
+        run: |
+          ssh -F ssh_config vm 'sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y build-essential "linux-headers-$(uname -r)"'
+          cat > build-dummy-hcd.sh <<'EOF'
+          set -e
+          mkdir -p dummy_hcd
+          cd dummy_hcd
+          branch="v$(uname -r | cut -d. -f1-2)"
+          curl -fsSL -o dummy_hcd.c "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/plain/drivers/usb/gadget/udc/dummy_hcd.c?h=${branch}"
+          echo 'obj-m := dummy_hcd.o' > Makefile
+          make -C "/lib/modules/$(uname -r)/build" M="$PWD" modules
+          sudo mkdir -p "/lib/modules/$(uname -r)/extra"
+          sudo cp dummy_hcd.ko "/lib/modules/$(uname -r)/extra/"
+          sudo depmod -a
+          sudo modprobe dummy_hcd num=2
+          sudo modprobe -r dummy_hcd
+          EOF
+          ssh -F ssh_config vm 'bash -s' < build-dummy-hcd.sh
+
+      - name: Run integration tests in VM
+        run: |
+          scp -F ssh_config usbip.test vm:
+          ssh -F ssh_config vm 'sudo ./usbip.test -test.v -test.timeout 15m'
+
+      - name: Show VM serial log
+        if: failure()
+        run: tail -200 serial.log
