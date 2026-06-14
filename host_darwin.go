@@ -328,19 +328,19 @@ func (e *darwinExport) Snapshot(busy bool) ExportSnapshot {
 	if e.stale {
 		return ExportSnapshot{
 			Entry:        e.entry,
-			Backend:      backendIDDarwinIOKit,
+			Backend:      BackendIDDarwinIOKit,
 			StableID:     stableID,
-			State:        deviceStateUnavailable,
+			State:        DeviceStateUnavailable,
 			StatusReason: e.staleReason(),
 		}
 	}
-	state := deviceStateAvailable
+	state := DeviceStateIdle
 	if busy {
-		state = deviceStateBusy
+		state = DeviceStateAttached
 	}
 	return ExportSnapshot{
 		Entry:    e.entry,
-		Backend:  backendIDDarwinIOKit,
+		Backend:  BackendIDDarwinIOKit,
 		StableID: stableID,
 		State:    state,
 	}

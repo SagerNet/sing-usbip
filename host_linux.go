@@ -676,30 +676,33 @@ func (e *linuxExport) Snapshot(busy bool) ExportSnapshot {
 				Serial:     e.descriptor.Serial,
 				Product:    e.descriptor.Product,
 			},
-			Backend:      backendIDLinuxSysfs,
+			Backend:      BackendIDLinuxSysfs,
 			StableID:     stableID,
-			State:        deviceStateUnavailable,
+			State:        DeviceStateUnavailable,
 			StatusReason: "device replaced",
 		}
 	}
 	status, statusErr := readUsbipStatus(e.busid)
-	var state, reason string
+	var (
+		state  DeviceState
+		reason string
+	)
 	switch {
 	case statusErr != nil:
-		state = deviceStateUnavailable
+		state = DeviceStateUnavailable
 		reason = statusErr.Error()
 	case busy:
 		status = usbipStatusUsed
-		state = deviceStateBusy
+		state = DeviceStateAttached
 		reason = linuxUSBIPStatusReason(status)
 	case status == usbipStatusAvailable:
-		state = deviceStateAvailable
+		state = DeviceStateIdle
 		reason = linuxUSBIPStatusReason(status)
 	case status == usbipStatusUsed:
-		state = deviceStateBusy
+		state = DeviceStateAttached
 		reason = linuxUSBIPStatusReason(status)
 	default:
-		state = deviceStateUnavailable
+		state = DeviceStateUnavailable
 		reason = linuxUSBIPStatusReason(status)
 	}
 	return ExportSnapshot{
@@ -709,7 +712,7 @@ func (e *linuxExport) Snapshot(busy bool) ExportSnapshot {
 			Serial:     e.descriptor.Serial,
 			Product:    e.descriptor.Product,
 		},
-		Backend:      backendIDLinuxSysfs,
+		Backend:      BackendIDLinuxSysfs,
 		StableID:     stableID,
 		State:        state,
 		StatusReason: reason,

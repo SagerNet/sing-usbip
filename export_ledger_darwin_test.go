@@ -45,7 +45,7 @@ func TestDarwinStaleExportBroadcastsUnavailableUpdate(t *testing.T) {
 		require.NoError(t, unmarshalControlPayload(message.Payload, &snapshot))
 		require.Len(t, snapshot.Devices, 1)
 		require.Equal(t, export.busid, snapshot.Devices[0].BusID)
-		require.Equal(t, deviceStateUnavailable, snapshot.Devices[0].State)
+		require.Equal(t, DeviceStateUnavailable, snapshot.Devices[0].State)
 		require.Equal(t, "device replaced", snapshot.Devices[0].StatusReason)
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for unavailable update")

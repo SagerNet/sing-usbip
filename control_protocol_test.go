@@ -38,7 +38,7 @@ func testControlDeviceEntry() DeviceEntry {
 func TestControlDeviceInfoRoundTrip(t *testing.T) {
 	t.Parallel()
 	entry := testControlDeviceEntry()
-	info := controlDeviceInfoFromEntry(entry, backendIDLinuxSysfs, "stable-1", deviceStateAvailable, 0, "")
+	info := controlDeviceInfoFromEntry(entry, BackendIDLinuxSysfs, "stable-1", DeviceStateIdle, 0, "")
 	require.Equal(t, "ABC123", info.Serial)
 	require.Equal(t, "Unifying Receiver", info.Product)
 	require.Equal(t, "/sys/bus/usb/devices/1-2", info.Path)
@@ -80,8 +80,8 @@ func TestFetchControlDeviceEntries(t *testing.T) {
 			Version: controlProtocolVersion,
 		}, controlDeviceSnapshot{
 			Devices: []ControlDeviceInfo{
-				controlDeviceInfoFromEntry(entry, backendIDLinuxSysfs, "stable-1", deviceStateAvailable, 0, ""),
-				controlDeviceInfoFromEntry(entry, backendIDLinuxSysfs, "stable-2", deviceStateBusy, 0, "used"),
+				controlDeviceInfoFromEntry(entry, BackendIDLinuxSysfs, "stable-1", DeviceStateIdle, 0, ""),
+				controlDeviceInfoFromEntry(entry, BackendIDLinuxSysfs, "stable-2", DeviceStateAttached, 0, "used"),
 			},
 		})
 	}()

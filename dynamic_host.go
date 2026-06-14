@@ -11,8 +11,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 )
 
-const backendIDDynamic = "dynamic"
-
 type DeviceTransport interface {
 	Submit(request URBRequest) URBResponse
 	AbortEndpoint(endpoint uint8) error
@@ -197,14 +195,14 @@ func (e *dynamicExport) BusID() string {
 }
 
 func (e *dynamicExport) Snapshot(busy bool) ExportSnapshot {
-	state := deviceStateAvailable
+	state := DeviceStateIdle
 	if busy {
-		state = deviceStateBusy
+		state = DeviceStateAttached
 	}
 	return ExportSnapshot{
 		Entry:    e.entry,
-		Backend:  backendIDDynamic,
-		StableID: backendIDDynamic + ":" + e.busid,
+		Backend:  BackendIDDynamic,
+		StableID: BackendIDDynamic.String() + ":" + e.busid,
 		State:    state,
 	}
 }

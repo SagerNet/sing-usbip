@@ -308,7 +308,7 @@ func (s *ServerService) buildDevListEntries() []DeviceEntry {
 	entries := make([]DeviceEntry, 0, len(exports))
 	for _, export := range exports {
 		snapshot := export.Snapshot(false)
-		if snapshot.State != deviceStateAvailable {
+		if snapshot.State != DeviceStateIdle {
 			continue
 		}
 		entries = append(entries, snapshot.Entry)

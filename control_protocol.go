@@ -23,15 +23,53 @@ const (
 	controlPrefaceSize      = 8
 	controlFrameSize        = 4
 	maxControlPayloadLength = 64<<10 - 1
-
-	deviceStateAvailable   = "available"
-	deviceStateBusy        = "busy"
-	deviceStateUnavailable = "unavailable"
-
-	backendIDLinuxSysfs     = "linux-sysfs"
-	backendIDDarwinIOKit    = "darwin-iokit"
-	backendIDWindowsVBoxUSB = "windows-vboxusb"
 )
+
+type DeviceState int32
+
+const (
+	DeviceStateIdle DeviceState = iota
+	DeviceStateAttached
+	DeviceStateUnavailable
+)
+
+func (s DeviceState) String() string {
+	switch s {
+	case DeviceStateIdle:
+		return "idle"
+	case DeviceStateAttached:
+		return "attached"
+	case DeviceStateUnavailable:
+		return "unavailable"
+	default:
+		return ""
+	}
+}
+
+type BackendID int32
+
+const (
+	BackendIDUnspecified BackendID = iota
+	BackendIDLinuxSysfs
+	BackendIDDynamic
+	BackendIDDarwinIOKit
+	BackendIDWindowsVBoxUSB
+)
+
+func (b BackendID) String() string {
+	switch b {
+	case BackendIDLinuxSysfs:
+		return "linux-sysfs"
+	case BackendIDDynamic:
+		return "dynamic"
+	case BackendIDDarwinIOKit:
+		return "darwin-iokit"
+	case BackendIDWindowsVBoxUSB:
+		return "windows-vboxusb"
+	default:
+		return ""
+	}
+}
 
 var controlPreface = [controlPrefaceSize]byte{'S', 'B', 'U', 'S', 'B', 'I', 'P', '1'}
 
@@ -55,7 +93,7 @@ type ControlDeviceInterface struct {
 type ControlDeviceInfo struct {
 	BusID              string                   `json:"busid"`
 	StableID           string                   `json:"stable_id,omitempty"`
-	Backend            string                   `json:"backend,omitempty"`
+	Backend            BackendID                `json:"backend,omitempty"`
 	Path               string                   `json:"path,omitempty"`
 	Serial             string                   `json:"serial,omitempty"`
 	Product            string                   `json:"product,omitempty"`
@@ -72,7 +110,7 @@ type ControlDeviceInfo struct {
 	NumConfigurations  uint8                    `json:"num_configurations"`
 	NumInterfaces      uint8                    `json:"num_interfaces"`
 	Interfaces         []ControlDeviceInterface `json:"interfaces,omitempty"`
-	State              string                   `json:"state"`
+	State              DeviceState              `json:"state"`
 	StatusCode         int                      `json:"status_code,omitempty"`
 	StatusReason       string                   `json:"status_reason,omitempty"`
 }
@@ -152,7 +190,7 @@ func unmarshalControlPayload(payload []byte, value any) error {
 	return json.Unmarshal(payload, value)
 }
 
-func controlDeviceInfoFromEntry(entry DeviceEntry, backend string, stableID string, state string, statusCode int, statusReason string) ControlDeviceInfo {
+func controlDeviceInfoFromEntry(entry DeviceEntry, backend BackendID, stableID string, state DeviceState, statusCode int, statusReason string) ControlDeviceInfo {
 	interfaces := make([]ControlDeviceInterface, len(entry.Interfaces))
 	for i := range entry.Interfaces {
 		interfaces[i] = ControlDeviceInterface{
@@ -160,9 +198,6 @@ func controlDeviceInfoFromEntry(entry DeviceEntry, backend string, stableID stri
 			SubClass: entry.Interfaces[i].BInterfaceSubClass,
 			Protocol: entry.Interfaces[i].BInterfaceProtocol,
 		}
-	}
-	if state == "" {
-		state = deviceStateAvailable
 	}
 	return ControlDeviceInfo{
 		BusID:              entry.Info.BusIDString(),
@@ -217,7 +252,7 @@ func sortedControlDeviceInfoValues(devices map[string]ControlDeviceInfo) []Contr
 func controlDeviceInfoToEntries(devices []ControlDeviceInfo, availableOnly bool) []DeviceEntry {
 	entries := make([]DeviceEntry, 0, len(devices))
 	for _, device := range devices {
-		if availableOnly && device.State != "" && device.State != deviceStateAvailable {
+		if availableOnly && device.State != DeviceStateIdle {
 			continue
 		}
 		var info DeviceInfoTruncated

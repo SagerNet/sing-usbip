@@ -466,13 +466,13 @@ func (e *windowsExport) BusID() string {
 }
 
 func (e *windowsExport) Snapshot(busy bool) ExportSnapshot {
-	state := deviceStateAvailable
+	state := DeviceStateIdle
 	if busy {
-		state = deviceStateBusy
+		state = DeviceStateAttached
 	}
 	return ExportSnapshot{
 		Entry:    e.entry,
-		Backend:  backendIDWindowsVBoxUSB,
+		Backend:  BackendIDWindowsVBoxUSB,
 		StableID: "windows-instance:" + e.info.InstanceID,
 		State:    state,
 	}

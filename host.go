@@ -30,9 +30,9 @@ type Export interface {
 
 type ExportSnapshot struct {
 	Entry        DeviceEntry
-	Backend      string
+	Backend      BackendID
 	StableID     string
-	State        string
+	State        DeviceState
 	StatusReason string
 	RawStatus    int
 }

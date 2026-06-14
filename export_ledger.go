@@ -162,7 +162,7 @@ func (l *exportLedger) TryReserveForImport(busid string) (Export, bool, string) 
 			return
 		}
 		if l.busy[busid] {
-			reason = deviceStateBusy
+			reason = DeviceStateAttached.String()
 			return
 		}
 		l.busy[busid] = true
@@ -247,7 +247,7 @@ func (l *exportLedger) snapshotDeviceState() []ControlDeviceInfo {
 	out := make([]ControlDeviceInfo, 0, len(entries))
 	for _, e := range entries {
 		snapshot := e.export.Snapshot(e.busy)
-		if snapshot.State == deviceStateUnavailable && snapshot.Entry.Info.BusIDString() == "" {
+		if snapshot.State == DeviceStateUnavailable && snapshot.Entry.Info.BusIDString() == "" {
 			continue
 		}
 		out = append(out, controlDeviceInfoFromEntry(snapshot.Entry, snapshot.Backend, snapshot.StableID, snapshot.State, snapshot.RawStatus, snapshot.StatusReason))
