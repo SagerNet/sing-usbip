@@ -18,8 +18,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// classGUIDDevClassUSB is GUID_DEVCLASS_USB (devguid.h) — the setup class
-// the VHCI devnode is created under, matching usbip2_ude.inf Class=USB.
+// GUID_DEVCLASS_USB (devguid.h), matching usbip2_ude.inf Class=USB.
 var classGUIDDevClassUSB = windows.GUID{
 	Data1: 0x36fc9e60,
 	Data2: 0xc465,
@@ -80,15 +79,11 @@ func installDriver() error {
 	return waitForInterface(20 * time.Second)
 }
 
-// probeDriver verifies not just that the VHCI interface exists but that
-// the bound driver speaks the bundled ABI. The interface GUID is
-// identical across all usbip-win2 releases, while PLUGIN_HARDWARE_ONCE
-// and STOP_ATTACH_ATTEMPTS only exist since 0.9.7.5 — an installed
-// community release older than that opens fine and then fails every
-// Plugin, so interface presence alone must not short-circuit the
-// install. The probe doubles as cleanup: the empty location means
-// "cancel all scheduled attach attempts", discarding ghost reconnects
-// left over from a previous process toward dead loopback ports.
+// The interface GUID is identical across all usbip-win2 releases, while
+// PLUGIN_HARDWARE_ONCE and STOP_ATTACH_ATTEMPTS only exist since 0.9.7.5 — an
+// installed community release older than that opens fine and then fails every
+// Plugin. The empty location passed to StopAttachAttempts means "cancel all
+// scheduled attach attempts".
 func probeDriver() error {
 	controller, err := Open()
 	if err != nil {
@@ -102,9 +97,8 @@ func probeDriver() error {
 	return nil
 }
 
-// addToDriverStore imports an INF (and its catalog-verified payload) into
-// the Windows driver store. SetupCopyOEMInfW rejects unsigned or tampered
-// packages; ERROR_FILE_EXISTS means the package is already present.
+// SetupCopyOEMInfW rejects unsigned or tampered packages; ERROR_FILE_EXISTS
+// means the package is already present.
 func addToDriverStore(infPath string) error {
 	infW, err := windows.UTF16PtrFromString(infPath)
 	if err != nil {
@@ -130,11 +124,6 @@ func addToDriverStore(infPath string) error {
 	return nil
 }
 
-// createDevnodeAndInstall creates the root-enumerated VHCI devnode and
-// installs usbip2_ude.inf onto it — the native equivalent of usbip-win2's
-// "devnode install". infPath must be absolute. If a VHCI devnode already
-// exists (e.g. the driver was removed but the root node lingers), the
-// driver is reinstalled onto it instead of creating a duplicate.
 func createDevnodeAndInstall(infPath string) error {
 	err := updateDriverForPlugAndPlayDevices(udeHardwareID, infPath)
 	if err == nil {
@@ -163,9 +152,8 @@ func createDevnodeAndInstall(infPath string) error {
 	return updateDriverForPlugAndPlayDevices(udeHardwareID, infPath)
 }
 
-// updateDriverForPlugAndPlayDevices binds the INF driver to every present
-// device matching hardwareID (the devnode just created). INSTALLFLAG_FORCE
-// installs even when the bundled driver is not strictly newer.
+// INSTALLFLAG_FORCE installs even when the bundled driver is not strictly
+// newer.
 func updateDriverForPlugAndPlayDevices(hardwareID, infPath string) error {
 	hardwareIDW, err := windows.UTF16PtrFromString(hardwareID)
 	if err != nil {
@@ -204,13 +192,12 @@ func waitForInterface(timeout time.Duration) error {
 	}
 }
 
-// multiSzUTF16 encodes s as a REG_MULTI_SZ (UTF-16LE, double-NUL terminated).
 func multiSzUTF16(s string) []byte {
 	u16, err := windows.UTF16FromString(s)
 	if err != nil {
 		return nil
 	}
-	u16 = append(u16, 0) // second NUL ends the list
+	u16 = append(u16, 0)
 	buf := make([]byte, len(u16)*2)
 	for i, v := range u16 {
 		binary.LittleEndian.PutUint16(buf[i*2:], v)

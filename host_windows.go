@@ -182,9 +182,6 @@ func (h *windowsExportHost) Reconcile(isReserved func(busid string) bool) (map[s
 			ProductID: d.ProductID,
 		}
 		if export, ok := current[d.BusID]; ok && d.Captured && d.IdentityIsStub() {
-			// The hub descriptor was unavailable and the registry reports
-			// the VBox stub ID; evaluate the match against the identity
-			// recorded when the export was created.
 			key.VendorID = export.info.VendorID
 			key.ProductID = export.info.ProductID
 		}
@@ -217,11 +214,8 @@ func (h *windowsExportHost) Reconcile(isReserved func(busid string) bool) (map[s
 		export := newWindowsExport(info, h.logger)
 		export.markSeen(now, info.InstanceID, info.Captured)
 		if info.Captured {
-			// Already bound to VBoxUSB — a capture surviving a crash of
-			// a previous instance (the driver binding outlives the
-			// process while the filter does not). Adopt it: install the
-			// filter so the capture survives PnP re-enumeration, and
-			// skip the restart since the stub is already in place.
+			// The VBoxUSB device binding outlives the process that
+			// created it, while the VBoxUSBMon filter does not.
 			h.addFilter(monitor, busid, info)
 			h.logger.Info("adopted already-captured ", busid, " (vid=", fmt.Sprintf("0x%04x", info.VendorID), " pid=", fmt.Sprintf("0x%04x", info.ProductID), ")")
 		} else {
@@ -278,11 +272,10 @@ func (h *windowsExportHost) snapshotSelf() map[string]Export {
 	return out
 }
 
-// captureDevice installs a capture filter and forces the device through
-// PnP re-enumeration. VBoxUSBMon only rewrites a device's IDs (handing
-// it to VBoxUSB.sys) while the device enumerates, so without the
-// restart an already-plugged device would keep its function driver
-// until physically replugged.
+// VBoxUSBMon only rewrites a device's IDs (handing it to VBoxUSB.sys)
+// while the device enumerates, so without a forced re-enumeration an
+// already-plugged device keeps its function driver until physically
+// replugged.
 func (h *windowsExportHost) captureDevice(monitor *vboxusb.Monitor, busid string, info vboxusb.USBDeviceInfo) {
 	if monitor == nil {
 		return
@@ -311,11 +304,10 @@ func (h *windowsExportHost) addFilter(monitor *vboxusb.Monitor, busid string, in
 	h.access.Unlock()
 }
 
-// captureFilter pins the permanent CAPTURE filter to one device on one
-// hub port. A VID/PID-only filter would capture every identical device
-// enumerating anywhere while the export lives, and would keep capturing
-// the matched device at new busids after a port change. usbipd-win sets
-// the same seven exact-match fields (VBoxUsbMon.cs CreateFilter).
+// A VBoxUSBMon VID/PID-only filter captures every identical device
+// enumerating anywhere while it lives, and keeps capturing the matched
+// device at new busids after a port change, so the filter is pinned to
+// one device on one hub port.
 func captureFilter(info vboxusb.USBDeviceInfo) vboxusb.Filter {
 	vendor := info.VendorID
 	product := info.ProductID
@@ -338,10 +330,8 @@ func captureFilter(info vboxusb.USBDeviceInfo) vboxusb.Filter {
 	return filter
 }
 
-// releaseDevice removes the capture filter and, if the device is still
-// present and captured, restarts it so its original function driver
-// re-binds. Without the restart the device stays dead to Windows until
-// physically replugged.
+// Without a restart to re-bind the original function driver, a released
+// device stays dead to Windows until physically replugged.
 func (h *windowsExportHost) releaseDevice(monitor *vboxusb.Monitor, busid string, export *windowsExport, info vboxusb.USBDeviceInfo, isPresent bool) {
 	device := export.takeDevice()
 	if device != nil {

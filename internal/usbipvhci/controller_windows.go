@@ -12,8 +12,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// guidDevInterfaceUSBHostController is GUID_DEVINTERFACE_USB_HOST_CONTROLLER,
-// registered by the usbip-win2 UDE driver for its emulated controller.
+// GUID_DEVINTERFACE_USB_HOST_CONTROLLER, registered by the usbip-win2 UDE
+// driver for its emulated controller.
 var guidDevInterfaceUSBHostController = windows.GUID{
 	Data1: 0xB4030C06,
 	Data2: 0xDC5F,
@@ -21,9 +21,6 @@ var guidDevInterfaceUSBHostController = windows.GUID{
 	Data4: [8]byte{0x87, 0xEB, 0xE5, 0x51, 0x5A, 0x09, 0x35, 0xC0},
 }
 
-// Controller is an open handle to the usbip-win2 VHCI device interface.
-// One controller multiplexes every attached device. The handle is
-// synchronous.
 type Controller struct {
 	handle      windows.Handle
 	ioctlAccess sync.Mutex
@@ -65,11 +62,9 @@ func (c *Controller) Close() error {
 	return c.closeErr
 }
 
-// Plugin attaches a remote device through the driver. host and service
-// address the loopback relay sing-usbip runs; busid is the bus id the
-// driver echoes back in its in-kernel OP_REQ_IMPORT, which sing-usbip must
-// confirm in OP_REP_IMPORT. The call blocks until the driver has
-// connected and finished the import handshake, then returns the assigned
+// The driver echoes busid back in its in-kernel OP_REQ_IMPORT, which the
+// caller must confirm in OP_REP_IMPORT. The driver blocks the call until it
+// has connected and finished the import handshake, then returns the assigned
 // hub port (>= 1).
 func (c *Controller) Plugin(host, service, busid string) (int, error) {
 	var buf [pluginHardwareSize]byte
@@ -86,8 +81,8 @@ func (c *Controller) Plugin(host, service, busid string) (int, error) {
 	if err != nil {
 		return 0, E.Cause(err, "usbipvhci: host")
 	}
-	// The driver writes back size + port; read those 8 bytes into a
-	// separate buffer (libusbip's outlen = offsetof(port) + sizeof(port)).
+	// The driver writes back size + port; libusbip's outlen = offsetof(port)
+	// + sizeof(port).
 	var out [offsetPluginPort + 4]byte
 	_, err = c.ioctl(ioctlPluginHardwareOnce, buf[:], out[:])
 	if err != nil {
@@ -100,13 +95,10 @@ func (c *Controller) Plugin(host, service, busid string) (int, error) {
 	return port, nil
 }
 
-// StopAttachAttempts cancels the driver's scheduled background
-// reconnect attempts for the given location (the exact host/service/
-// busid triple passed to Plugin), or for every location when all three
-// are empty. Returns the number of canceled requests. Must be called
-// on session teardown: the dropped connection's reattach attempts
-// target a one-shot loopback port that no longer exists and would
-// otherwise steal a later session's Accept.
+// The driver cancels its scheduled background reconnect attempts for the
+// given location (the exact host/service/busid triple passed to Plugin), or
+// for every location when all three are empty, and writes back the number of
+// canceled requests.
 func (c *Controller) StopAttachAttempts(host, service, busid string) (int, error) {
 	var buf [stopAttachAttemptsSize]byte
 	binary.LittleEndian.PutUint32(buf[offsetPluginSize:], stopAttachAttemptsSize)
@@ -129,9 +121,8 @@ func (c *Controller) StopAttachAttempts(host, service, busid string) (int, error
 	return int(int32(binary.LittleEndian.Uint32(buf[offsetStopAttachAttemptsCount:]))), nil
 }
 
-// Plugout detaches the device on the given hub port. PortAll detaches
-// every device. A port the driver already tore down (after its socket
-// dropped) reports STATUS_DEVICE_NOT_CONNECTED, surfaced as an error.
+// A port the driver already tore down (after its socket dropped) reports
+// STATUS_DEVICE_NOT_CONNECTED.
 func (c *Controller) Plugout(port int) error {
 	var buf [plugoutHardwareSize]byte
 	binary.LittleEndian.PutUint32(buf[0:], plugoutHardwareSize)
@@ -176,11 +167,10 @@ func putCString(dst []byte, s string) error {
 	return nil
 }
 
-// interfacePath returns the device interface path for the VHCI
-// controller. Passing a nil device id to CM_Get_Device_Interface_ListW
-// enumerates every interface of the class, matching usbip-win2's
-// userspace; x/sys/windows.CM_Get_Device_Interface_List cannot pass nil,
-// so the two cfgmgr32 calls are issued directly.
+// Passing a nil device id to CM_Get_Device_Interface_ListW enumerates every
+// interface of the class, matching usbip-win2's userspace;
+// x/sys/windows.CM_Get_Device_Interface_List cannot pass nil, so the two
+// cfgmgr32 calls are issued directly.
 func interfacePath() (string, error) {
 	guid := guidDevInterfaceUSBHostController
 	for {

@@ -17,11 +17,8 @@ func EncodeIsoSubmit(currentFrame uint64, base SubmitCommand, ciFrame uint8, asa
 	return base
 }
 
-// RebaseFrame returns the smallest absolute USB frame number whose low 8
-// bits equal low8 and is >= currentFrame. Apple's IOUSBHostCI iso messages
-// only carry the low 8 bits; the host recovers the high bits against the
-// controller's monotonic counter. firstFrameNumber must be in the future;
-// 0 is reserved for ASAP and handled separately by the caller.
+// Apple's IOUSBHostCI iso messages only carry the low 8 bits; the host
+// recovers the high bits against the controller's monotonic counter.
 func RebaseFrame(currentFrame uint64, low8 uint8) uint64 {
 	base := currentFrame&^0xff | uint64(low8)
 	if base < currentFrame {

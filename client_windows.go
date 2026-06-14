@@ -84,7 +84,7 @@ type windowsClientSession struct {
 	cancel context.CancelFunc
 
 	listener     net.Listener
-	relayService string // loopback port passed to Plugin, for StopAttachAttempts
+	relayService string
 	hubPort      int
 
 	connAccess sync.Mutex
@@ -157,7 +157,7 @@ func (s *windowsClientSession) acceptAndRelay() {
 		driverConn = conn
 		break
 	}
-	_ = s.listener.Close() // one-shot: the driver has connected
+	_ = s.listener.Close()
 
 	s.connAccess.Lock()
 	s.driverConn = driverConn
@@ -170,10 +170,8 @@ func (s *windowsClientSession) acceptAndRelay() {
 	relay(driverConn, s.remote)
 }
 
-// verifyDriverConn authenticates an accepted loopback connection: the
-// peer socket must be owned by the kernel (the driver connects via
-// WSK, attributed to the System process) and must complete the import
-// handshake for exactly the device this session carries.
+// The VHCI driver connects via kernel WSK, so its loopback socket is
+// attributed to the System process.
 func (s *windowsClientSession) verifyDriverConn(conn net.Conn) error {
 	pid, err := loopbackPeerPID(conn)
 	if err != nil {
@@ -191,10 +189,8 @@ func (s *windowsClientSession) verifyDriverConn(conn net.Conn) error {
 	return nil
 }
 
-// respondImport answers the driver's in-kernel OP_REQ_IMPORT from the
-// cached device info, leaving both sides positioned at the data phase.
-// The driver verifies the bus id in our reply equals the one it sent
-// (which the caller passed to Plugin), so info.BusID must round-trip.
+// The driver verifies the bus id in the reply equals the one it sent
+// (the value passed to Plugin), so info.BusID must round-trip.
 func (s *windowsClientSession) respondImport(driverConn net.Conn) error {
 	header, err := ReadOpHeader(driverConn)
 	if err != nil {

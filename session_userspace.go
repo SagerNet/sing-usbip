@@ -269,10 +269,9 @@ func (s *userspaceURBSession) enterSubmit(seq uint32) bool {
 	return true
 }
 
-// awaitDrained waits for the unlinked submit's goroutine to leave the
-// engine. The endpoint abort and the submit's entry into the engine
-// race inside the driver, so a single abort may fire before the URB is
-// queued and strand it; re-abort periodically until the drain closes.
+// The endpoint abort and the submit's entry into the engine race inside
+// the driver, so a single abort may fire before the URB is queued and
+// strand it.
 func (s *userspaceURBSession) awaitDrained(endpoint uint8, drained <-chan struct{}, reAbort bool) {
 	if !reAbort {
 		<-drained

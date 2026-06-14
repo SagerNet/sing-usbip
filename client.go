@@ -27,12 +27,6 @@ type ClientService struct {
 	assignedWorkers []*clientAssignedWorker
 	allWorkers      map[string]*clientRemoteWorker
 
-	// workerGroup tracks every goroutine the service spawns so Close can
-	// drain them before host.Close: session teardown issues cleanup
-	// through the platform host (on Windows, StopAttachAttempts/Plugout
-	// ioctls against the shared VHCI controller handle), and destroying
-	// the host first both races the handle and skips the cleanup —
-	// leaving the UDE device plugged in with reattach attempts live.
 	workerGroup sync.WaitGroup
 
 	remoteAccess  sync.Mutex

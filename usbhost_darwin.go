@@ -73,8 +73,8 @@ type darwinCITransfer struct {
 	message darwinCIMessage
 }
 
-// cgoCallbackHandle: destroyC MUST synchronously drain the C-side queue
-// before returning; only then is it safe to delete the handle.
+// destroyC MUST synchronously drain the C-side queue before returning; only
+// then is it safe to delete the handle.
 type cgoCallbackHandle struct {
 	handle cgo.Handle
 }
@@ -570,7 +570,6 @@ func darwinIOReturnToUSBIPStatus(status int32) int32 {
 	}
 }
 
-// Only for real transfer completion, not for EndpointPause-driven state machine events.
 func darwinUSBIPStatusToCIStatus(status int32) int {
 	if status == 0 {
 		return int(C.IOUSBHostCIMessageStatusSuccess)

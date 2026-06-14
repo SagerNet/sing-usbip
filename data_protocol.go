@@ -118,9 +118,8 @@ func ReadSubmitCommandBody(r io.Reader, header DataHeader) (SubmitCommand, error
 	return command, nil
 }
 
-// ReadSubmitResponseBody decodes a RET_SUBMIT body. requestDirection must be
-// the original CMD_SUBMIT direction, because the USB/IP response header zeroes
-// direction on the wire.
+// The USB/IP response header zeroes direction on the wire; requestDirection
+// must be the original CMD_SUBMIT direction.
 func ReadSubmitResponseBody(r io.Reader, header DataHeader, requestDirection uint32) (SubmitResponse, error) {
 	var raw [28]byte
 	_, err := io.ReadFull(r, raw[:])

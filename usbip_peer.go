@@ -28,11 +28,8 @@ var (
 	ErrCanceled   error = urbCanceledError{}
 )
 
-// pendingSubmit retains the per-submit metadata the peer needs to
-// emit a protocol-conformant CMD_UNLINK and to bind RET_UNLINK back
-// to the originating submit. DevID is required by Linux's stub_rx
-// valid_request check; without it cancellation packets are silently
-// rejected.
+// DevID is required by Linux's stub_rx valid_request check; without it
+// cancellation packets are silently rejected.
 type pendingSubmit struct {
 	transaction *UrbTransaction
 	devID       uint32

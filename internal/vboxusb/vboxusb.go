@@ -2,7 +2,6 @@ package vboxusb
 
 const AssetVersion = "7.2.8.23730"
 
-// VBoxUSB/VBoxUSBMon minimum acceptable major version reported via GET_VERSION.
 const (
 	DriverMajorVersion = 5
 	DriverMinorVersion = 0

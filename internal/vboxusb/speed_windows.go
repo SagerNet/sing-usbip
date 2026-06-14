@@ -79,10 +79,8 @@ type hubSpeedProbe struct {
 	hubs map[string]windows.Handle
 }
 
-// hubDeviceDescriptor carries the identity fields of the
-// USB_DEVICE_DESCRIPTOR embedded in USB_NODE_CONNECTION_INFORMATION_EX.
-// The hub reports the real descriptor regardless of which function
-// driver owns the device, so these survive VBoxUSB capture.
+// The hub reports the real USB_DEVICE_DESCRIPTOR regardless of which
+// function driver owns the device, so these survive VBoxUSB capture.
 type hubDeviceDescriptor struct {
 	vendorID       uint16
 	productID      uint16
@@ -207,8 +205,6 @@ func queryNodeConnection(hub windows.Handle, port uint32) (*hubDeviceDescriptor,
 	return descriptor, speed
 }
 
-// queryNodeConnectionV2 reports whether the device on the given port
-// operates at SuperSpeed (or higher) and SuperSpeedPlus (or higher).
 // The request must announce the caller's understood protocols and the
 // struct length on input, or the hub driver fails the request.
 func queryNodeConnectionV2(hub windows.Handle, port uint32) (bool, bool) {

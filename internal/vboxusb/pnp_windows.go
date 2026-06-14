@@ -36,19 +36,11 @@ const (
 	vboxStubProductID uint16 = 0xCAFE
 )
 
-// USBDeviceInfo describes one USB device enumerated by Windows
-// regardless of which function driver currently owns it. BusNumber is
-// the parent hub number and Address the hub port, both parsed from the
-// device's location information; together they form the stable bus-id
-// string ("<hub>-<port>"). SPDRP_BUSNUMBER (always 0 for USB devices)
-// and SPDRP_ADDRESS (the port, unique only within one hub) cannot form
-// a unique key — devices on equal-numbered ports of different hubs
-// would collide.
-//
-// VendorID/ProductID/Revision/DeviceClass come from the parent hub's
-// cached device descriptor when available (stable across VBoxUSB
-// capture, signaled by DescriptorFromHub), falling back to the registry
-// hardware ID (which reads as the VBox stub ID once captured).
+// SPDRP_BUSNUMBER is always 0 for USB devices and SPDRP_ADDRESS is the
+// port, unique only within one hub; they cannot form a unique key.
+// The parent hub's cached device descriptor is stable across VBoxUSB
+// capture, while the registry hardware ID reads as the VBox stub ID once
+// captured.
 type USBDeviceInfo struct {
 	InstanceID        string
 	HardwareID        string
@@ -57,13 +49,13 @@ type USBDeviceInfo struct {
 	Revision          uint16
 	BusNumber         uint32 // parent hub number (Hub_#NNNN)
 	Address           uint32 // parent hub port number (Port_#NNNN)
-	BusID             string // "<hub>-<port>"
+	BusID             string
 	DeviceClass       uint8
 	DeviceSubClass    uint8
 	DeviceProtocol    uint8
 	DescriptorFromHub bool
 	Speed             DeviceSpeed
-	Captured          bool // currently owned by VBoxUSB.sys
+	Captured          bool
 	Product           string
 }
 
@@ -77,9 +69,6 @@ var devpkeyDeviceBusReportedDeviceDesc = windows.DEVPROPKEY{
 	PID: 4,
 }
 
-// IdentityIsStub reports whether VendorID/ProductID still carry the
-// VBoxUSB stub identity, i.e. the device is captured and the hub
-// descriptor (the only source of the true identity) was unavailable.
 func (i USBDeviceInfo) IdentityIsStub() bool {
 	return i.VendorID == vboxStubVendorID && i.ProductID == vboxStubProductID
 }
@@ -159,11 +148,10 @@ func EnumerateUSBDevices() ([]USBDeviceInfo, error) {
 	return out, nil
 }
 
-// WaitForCapturedDevice polls for a VBoxUSB-owned device at the given
-// hub and port and returns its VBoxUSB interface path. Capture changes
-// the device's instance ID (VBoxUSBMon rewrites it to the stub ID), so
-// the location information — maintained by the parent hub driver and
-// therefore stable across the rewrite — is the only reliable key.
+// Capture changes the device's instance ID (VBoxUSBMon rewrites it to
+// the stub ID), so the location information — maintained by the parent
+// hub driver and therefore stable across the rewrite — is the only
+// reliable key.
 func WaitForCapturedDevice(busNumber, address uint32, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -236,7 +224,7 @@ func firstString(value any) string {
 	return ""
 }
 
-// parseLocationInfo extracts port/hub from SPDRP_LOCATION_INFORMATION ("Port_#0002.Hub_#0003").
+// SPDRP_LOCATION_INFORMATION format: "Port_#0002.Hub_#0003".
 func parseLocationInfo(location string) (hub, port uint32, ok bool) {
 	upper := strings.ToUpper(location)
 	port, portFound := extractDecimal(upper, "PORT_#")

@@ -22,8 +22,6 @@ var filterInf []byte
 //go:embed assets/amd64/usbip2_filter.cat
 var filterCat []byte
 
-// assetVersion is the bundled usbip-win2 release. amd64 uses 0.9.7.7
-// (latest; x64-only installer), the first release with PLUGIN_HARDWARE_ONCE.
 func assetVersion() string { return "0.9.7.7" }
 
 func assetFiles() []assetFile {

@@ -52,9 +52,7 @@ func enableLoadDriverPrivilege() error {
 	}
 	// AdjustTokenPrivileges reports success even when the token does not
 	// hold the privilege (ERROR_NOT_ALL_ASSIGNED, which the x/sys
-	// wrapper drops when the call returns nonzero). Without this
-	// re-check the failure surfaces much later as an unhelpful
-	// access-denied opening the monitor.
+	// wrapper drops when the call returns nonzero).
 	enabled, err := tokenPrivilegeEnabled(token, luid)
 	if err != nil {
 		return E.Cause(err, "vboxusb: query token privileges")

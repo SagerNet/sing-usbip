@@ -161,13 +161,9 @@ func (e *darwinEndpoint) handleCommand(message darwinCIMessage) bool {
 	return message.messageType() == ciMsgEndpointDestroy
 }
 
-// abortPending cancels the in-flight transaction. retiredByCommand
-// marks retirement caused by a driver command (EndpointPause and its
-// follow-ups): the SDK requires such transfers to complete with
-// EndpointStopped — any other non-success status (the Offline that
-// ErrCanceled would otherwise map to) transitions the endpoint to
-// Halted, turning a routine driver-initiated abort into
-// device-unreachable.
+// A transfer retired by a driver command (EndpointPause and its follow-ups)
+// must complete with EndpointStopped: any other non-success status transitions
+// the endpoint to Halted.
 func (e *darwinEndpoint) abortPending(pending *pendingTransfer, retiredByCommand bool) {
 	_ = pending.transaction.Cancel()
 	select {

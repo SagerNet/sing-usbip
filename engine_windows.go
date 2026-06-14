@@ -19,11 +19,10 @@ func newVBoxUSBEngine(device *vboxusb.Device) *vboxusbEngine {
 
 func (e *vboxusbEngine) Submit(req URBRequest) URBResponse {
 	command := req.Command
-	// EP0 traps: SET_CONFIGURATION, SET_INTERFACE, CLEAR_FEATURE(ENDPOINT_HALT)
-	// must go through dedicated IOCTLs because VBoxUSB rebuilds its
-	// pipe-handle table on the first two and resets the host-side pipe
-	// state on the third — racing a SEND_URB against them produces
-	// wrong-pipe errors. Mirrors usbipd-win AttachedEndpoint.cs:270-319.
+	// VBoxUSB rebuilds its pipe-handle table on SET_CONFIGURATION and
+	// SET_INTERFACE and resets the host-side pipe state on
+	// CLEAR_FEATURE(ENDPOINT_HALT); racing a SEND_URB against them produces
+	// wrong-pipe errors, so they must go through dedicated IOCTLs.
 	if command.Header.Endpoint == 0 {
 		response, trapped := e.trapStandardControl(command)
 		if trapped {
@@ -56,13 +55,13 @@ func (e *vboxusbEngine) trapStandardControl(command SubmitCommand) (URBResponse,
 	wIndex := uint16(command.Setup[4]) | uint16(command.Setup[5])<<8
 
 	switch {
-	case bmRequestType == 0x00 && bRequest == 0x09: // SET_CONFIGURATION
+	case bmRequestType == 0x00 && bRequest == 0x09:
 		err := e.device.SetConfig(byte(wValue))
 		return controlAckResponse(err), true
-	case bmRequestType == 0x01 && bRequest == 0x0b: // SET_INTERFACE
+	case bmRequestType == 0x01 && bRequest == 0x0b:
 		err := e.device.SelectInterface(byte(wIndex), byte(wValue))
 		return controlAckResponse(err), true
-	case bmRequestType == 0x02 && bRequest == 0x01 && wValue == 0x00: // CLEAR_FEATURE(ENDPOINT_HALT)
+	case bmRequestType == 0x02 && bRequest == 0x01 && wValue == 0x00:
 		err := e.device.ClearEndpoint(byte(wIndex))
 		return controlAckResponse(err), true
 	}
@@ -76,10 +75,8 @@ func controlAckResponse(err error) URBResponse {
 	return URBResponse{Status: 0, ActualLength: 0}
 }
 
-// controlSubmit sends a non-trapped EP0 transfer as USBSUP_TRANSFER_TYPE_MSG
-// with the 8-byte setup packet prepended to the buffer; urb.Length
-// includes those 8 bytes. The reply strips them back off so the
-// session sees only the data stage.
+// USBSUP_TRANSFER_TYPE_MSG carries the 8-byte setup packet prepended to
+// the buffer, and urb.Length includes those 8 bytes.
 func (e *vboxusbEngine) controlSubmit(req URBRequest) URBResponse {
 	command := req.Command
 	data := req.Buffer
@@ -186,19 +183,15 @@ func (e *vboxusbEngine) isoSubmit(req URBRequest) URBResponse {
 }
 
 type isoChunk struct {
-	first int // index of the chunk's first packet
+	first int
 	count int
-	base  int // buffer offset of the chunk's first packet
-	end   int // buffer offset one past the chunk's last byte
+	base  int
+	end   int
 }
 
-// isoSubmitSplit handles requests beyond the 8-packet USBSUP_URB limit
-// (UVC webcams routinely submit 32 packets per URB) by splitting them
-// into multiple driver URBs over the same buffer, all submitted
-// concurrently so the host controller can schedule them back-to-back —
-// usbipd-win's HandleSubmitIsochronousAsync does the same. Each
-// sub-URB's buffer pointer is advanced to its first packet so the
-// driver's uint16 packet offsets stay in range.
+// USBSUP_URB carries at most 8 packets, and its per-packet offsets are
+// uint16 relative to the URB buffer, so each sub-URB's buffer pointer is
+// advanced to its first packet to keep those offsets in range.
 func (e *vboxusbEngine) isoSubmitSplit(req URBRequest) URBResponse {
 	command := req.Command
 	packets := command.IsoPackets
@@ -278,8 +271,6 @@ func (e *vboxusbEngine) isoSubmitSplit(req URBRequest) URBResponse {
 			req.IsoPackets[globalIndex].ActualLength = int32(urb.IsoPackets[i].Length)
 			packetStatus := vboxusbStatusToUSBIP(urb.IsoPackets[i].Status)
 			if packetStatus == 0 {
-				// A chunk-level error (the whole sub-URB failed) applies
-				// to every packet the driver did not individually fail.
 				packetStatus = status
 			}
 			req.IsoPackets[globalIndex].Status = packetStatus
@@ -303,8 +294,6 @@ func directionFromCommand(usbipDir uint32) vboxusb.Direction {
 	return vboxusb.DirectionOut
 }
 
-// flagsFromCommand sets SHORT_OK on IN transfers unless USB/IP set
-// URB_SHORT_NOT_OK (bit 0). Matches usbipd-win AttachedEndpoint.cs:224-226.
 func flagsFromCommand(transferFlags int32, usbipDir uint32) vboxusb.TransferFlags {
 	if usbipDir != USBIPDirIn {
 		return vboxusb.TransferFlagNone

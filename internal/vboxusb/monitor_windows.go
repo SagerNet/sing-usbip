@@ -12,8 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Monitor is a handle to \\.\VBoxUSBMon. The driver serializes filter
-// mutations internally.
+// The driver serializes filter mutations internally.
 type Monitor struct {
 	handle   windows.Handle
 	closing  sync.Once
@@ -64,12 +63,10 @@ func (m *Monitor) GetVersion() (uint32, uint32, error) {
 	return binary.LittleEndian.Uint32(buf[0:4]), binary.LittleEndian.Uint32(buf[4:8]), nil
 }
 
-// AddFilter installs a permanent CAPTURE filter: every PnP arrival
-// matching it is handed to VBoxUSB.sys until the filter is removed (or
-// the monitor handle that owns it closes). Returns a filter id that
-// must be passed to RemoveFilter on detach. usbipd-win uses the same
-// permanent-filter pattern so capture survives transient PnP retries
-// during RestartingDevice.
+// A CAPTURE filter is permanent: every PnP arrival matching it is handed
+// to VBoxUSB.sys until the filter is removed (or the monitor handle that
+// owns it closes). usbipd-win uses the same permanent-filter pattern so
+// capture survives transient PnP retries during RestartingDevice.
 func (m *Monitor) AddFilter(filter Filter) (uint64, error) {
 	in := encodeFilter(filter)
 	var out [12]byte // UsbSupFltAddOut: uint64 uId + int32 rc

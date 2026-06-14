@@ -104,10 +104,8 @@ func (h *darwinExportHost) Events() (<-chan struct{}, error) {
 	h.watcher = watcher
 	h.eventsCh = ch
 	h.access.Unlock()
-	// Whoever wins the watcher swap (this goroutine or Close) closes the
-	// channel, and only after watcher.Close has drained the dispatch
-	// queue: an in-flight IOKit callback can still run signal during the
-	// drain, and a send on a closed channel inside select panics.
+	// An in-flight IOKit callback can still run signal until watcher.Close has
+	// drained the dispatch queue.
 	go func() {
 		<-h.runCtx.Done()
 		h.access.Lock()

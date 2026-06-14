@@ -625,10 +625,9 @@ func (h *linuxExportHost) releaseExport(export *linuxExport) error {
 	return delErr
 }
 
-// reprobeDevice asks the kernel to attach a driver to a currently
-// driverless device. usbip-host's rebind attribute calls
-// device_attach — the path the official usbip unbind tool uses;
-// drivers_probe is the bus-generic fallback.
+// usbip-host's rebind attribute calls device_attach — the path the
+// official usbip unbind tool uses; drivers_probe is the bus-generic
+// fallback.
 func (h *linuxExportHost) reprobeDevice(busid string) error {
 	err := writeSysfs(filepath.Join(sysUsbipHostDriver, "rebind"), busid)
 	if err == nil {

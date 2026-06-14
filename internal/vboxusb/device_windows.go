@@ -192,8 +192,6 @@ func (d *Device) SendURB(urb *URB) error {
 	return nil
 }
 
-// URBStatusError signals a USB-level failure reported by the driver
-// (STALL, DNR, CRC, etc.) rather than a Windows-level IOCTL failure.
 type URBStatusError struct {
 	Code URBError
 }
@@ -246,11 +244,9 @@ func newOverlappedOp(inLen, outLen int) *overlappedOp {
 	return op
 }
 
-// overlappedIoctl issues one DeviceIoControl with a dedicated
-// OVERLAPPED and event. Sharing one event across simultaneously
-// pending IOCTLs is forbidden by the overlapped-I/O contract: the
-// first completion would release every waiter with the first
-// operation's results.
+// Sharing one event across simultaneously pending IOCTLs is forbidden by
+// the overlapped-I/O contract: the first completion would release every
+// waiter with the first operation's results.
 func overlappedIoctl(handle windows.Handle, code uint32, in []byte, out []byte) (uint32, error) {
 	event, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
