@@ -53,6 +53,10 @@ func NewServerService(ctx context.Context, options ServerOptions) (*ServerServic
 		cancel()
 		return nil, err
 	}
+	return newServerServiceWithHost(ctx, cancel, serviceLogger, options, host), nil
+}
+
+func newServerServiceWithHost(ctx context.Context, cancel context.CancelFunc, serviceLogger logger.ContextLogger, options ServerOptions, host ExportHost) *ServerService {
 	return &ServerService{
 		ctx:           ctx,
 		cancel:        cancel,
@@ -63,7 +67,7 @@ func NewServerService(ctx context.Context, options ServerOptions) (*ServerServic
 		host:          host,
 		ledger:        newExportLedger(serviceLogger),
 		sessions:      make(map[DataSession]struct{}),
-	}, nil
+	}
 }
 
 func (s *ServerService) Start() (err error) {
@@ -128,6 +132,16 @@ func (s *ServerService) ListenAddr() net.Addr {
 		return nil
 	}
 	return s.listener.Addr()
+}
+
+func (s *ServerService) DeviceSnapshot() []ControlDeviceInfo {
+	return s.ledger.StateSnapshot()
+}
+
+func (s *ServerService) SubscribeDevices(ctx context.Context, listener func([]ControlDeviceInfo)) {
+	id := s.ledger.AddStateListener(listener)
+	defer s.ledger.RemoveStateListener(id)
+	<-ctx.Done()
 }
 
 func (s *ServerService) listenTCP() (net.Listener, error) {

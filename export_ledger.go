@@ -19,6 +19,8 @@ type exportLedger struct {
 	nextSubID       uint64
 	subs            map[uint64]*exportSubscriber
 	state           map[string]ControlDeviceInfo
+	nextListenerID  uint64
+	stateListeners  map[uint64]func([]ControlDeviceInfo)
 
 	inventoryAccess sync.Mutex
 	exports         map[string]Export
@@ -35,11 +37,12 @@ const controlSubscriberSendBuffer = 16
 
 func newExportLedger(logger logger.ContextLogger) *exportLedger {
 	return &exportLedger{
-		logger:  logger,
-		subs:    make(map[uint64]*exportSubscriber),
-		state:   make(map[string]ControlDeviceInfo),
-		exports: make(map[string]Export),
-		busy:    make(map[string]bool),
+		logger:         logger,
+		subs:           make(map[uint64]*exportSubscriber),
+		state:          make(map[string]ControlDeviceInfo),
+		stateListeners: make(map[uint64]func([]ControlDeviceInfo)),
+		exports:        make(map[string]Export),
+		busy:           make(map[string]bool),
 	}
 }
 
@@ -112,12 +115,38 @@ func (l *exportLedger) BroadcastIfChanged() bool {
 		return false
 	}
 	l.state = nextState
+	devices := sortedControlDeviceInfoValues(nextState)
 	frame := controlFrame{Type: controlFrameDeviceSnapshot, Version: controlProtocolVersion}
-	payload := controlDeviceSnapshot{Devices: sortedControlDeviceInfoValues(nextState)}
+	payload := controlDeviceSnapshot{Devices: devices}
 	for _, sub := range l.subs {
 		l.enqueuePayload(sub, frame, payload)
 	}
+	for _, listener := range l.stateListeners {
+		listener(devices)
+	}
 	return true
+}
+
+func (l *exportLedger) StateSnapshot() []ControlDeviceInfo {
+	l.broadcastAccess.Lock()
+	defer l.broadcastAccess.Unlock()
+	return sortedControlDeviceInfoValues(l.state)
+}
+
+func (l *exportLedger) AddStateListener(listener func([]ControlDeviceInfo)) uint64 {
+	l.broadcastAccess.Lock()
+	defer l.broadcastAccess.Unlock()
+	l.nextListenerID++
+	id := l.nextListenerID
+	l.stateListeners[id] = listener
+	listener(sortedControlDeviceInfoValues(l.state))
+	return id
+}
+
+func (l *exportLedger) RemoveStateListener(id uint64) {
+	l.broadcastAccess.Lock()
+	delete(l.stateListeners, id)
+	l.broadcastAccess.Unlock()
 }
 
 func (l *exportLedger) TryReserveForImport(busid string) (Export, bool, string) {
