@@ -1,6 +1,6 @@
 module github.com/sagernet/sing-usbip
 
-go 1.25
+go 1.24.0
 
 require (
 	github.com/sagernet/sing v0.8.11-0.20260514110501-905ad103a4df
