@@ -41,6 +41,9 @@ type userspaceURBSession struct {
 	doneOnce sync.Once
 	runErr   error
 
+	fatalOnce sync.Once
+	fatalErr  error
+
 	stateAccess sync.Mutex
 	started     bool
 	closed      bool
@@ -128,7 +131,27 @@ func (s *userspaceURBSession) run() {
 	if err != nil && (errors.Is(err, io.EOF) || E.IsClosedOrCanceled(err)) {
 		err = nil
 	}
+	fatal := s.loadFatal()
+	if fatal != nil {
+		err = fatal
+	}
 	s.markDone(err)
+}
+
+func (s *userspaceURBSession) failFatal(err error) {
+	s.fatalOnce.Do(func() {
+		s.stateAccess.Lock()
+		s.fatalErr = err
+		s.stateAccess.Unlock()
+		s.logger.Warn("device gone, tearing down session: ", err)
+		_ = s.conn.Close()
+	})
+}
+
+func (s *userspaceURBSession) loadFatal() error {
+	s.stateAccess.Lock()
+	defer s.stateAccess.Unlock()
+	return s.fatalErr
 }
 
 func (s *userspaceURBSession) serve() error {
@@ -238,9 +261,10 @@ func (s *userspaceURBSession) startSubmit(next userspaceNextSubmit) {
 		defer s.wg.Done()
 
 		var response SubmitResponse
+		var submitErr error
 		entered := s.enterSubmit(next.sequence)
 		if entered {
-			response = s.handleSubmit(next.command)
+			response, submitErr = s.handleSubmit(next.command)
 		}
 		shouldSend, followUp, hasFollowUp := s.finishSubmit(next.sequence)
 		if shouldSend && entered {
@@ -248,8 +272,11 @@ func (s *userspaceURBSession) startSubmit(next userspaceNextSubmit) {
 			err := WriteSubmitResponse(s.conn, response)
 			s.writeAccess.Unlock()
 			if err != nil {
-				_ = s.conn.Close()
+				s.failFatal(err)
 			}
+		}
+		if submitErr != nil {
+			s.failFatal(submitErr)
 		}
 		if hasFollowUp {
 			s.startSubmit(followUp)
@@ -297,7 +324,7 @@ func (s *userspaceURBSession) awaitDrained(endpoint uint8, drained <-chan struct
 	}
 }
 
-func (s *userspaceURBSession) handleSubmit(command SubmitCommand) SubmitResponse {
+func (s *userspaceURBSession) handleSubmit(command SubmitCommand) (SubmitResponse, error) {
 	response := SubmitResponse{
 		Header: DataHeader{
 			Command:   RetSubmit,
@@ -322,9 +349,8 @@ func (s *userspaceURBSession) handleSubmit(command SubmitCommand) SubmitResponse
 		IsoPackets: response.IsoPackets,
 	})
 	if result.Error != nil {
-		s.logger.Debug("submit seq ", command.Header.SeqNum, " endpoint ", fmt.Sprintf("0x%02x", endpoint), ": ", result.Error)
 		response.Status = usbipStatusEIO
-		return response
+		return response, E.Cause(result.Error, "submit seq ", command.Header.SeqNum, " endpoint ", fmt.Sprintf("0x%02x", endpoint))
 	}
 	response.Status = result.Status
 	if result.IsoPackets != nil {
@@ -343,7 +369,7 @@ func (s *userspaceURBSession) handleSubmit(command SubmitCommand) SubmitResponse
 			response.Buffer = result.Buffer[:min(int(actual), len(result.Buffer))]
 		}
 	}
-	return response
+	return response, nil
 }
 
 func packIsoInResponseBuffer(buffer []byte, packets []IsoPacketDescriptor) []byte {

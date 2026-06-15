@@ -33,6 +33,8 @@ const (
 var (
 	errImmediateReconnect = E.New("usbip control reconnect")
 	errControlTransient   = E.New("usbip control transient")
+	errDialFailed         = E.New("dial server")
+	errImportRejected     = E.New("remote rejected import")
 )
 
 type clientAssignedWorker struct {

@@ -4,6 +4,7 @@ package usbip
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -110,6 +111,10 @@ func (c *ClientService) runBusIDLoop(ctx context.Context, busid, description str
 				return
 			}
 			c.logger.Error("attach ", description, " (", busid, "): ", err)
+			if !errors.Is(err, errDialFailed) && !c.shouldRetryBusID(ctx, busid) {
+				c.logger.Info("remote export ", busid, " disappeared; stopping import worker")
+				return
+			}
 			if !sleepCtx(ctx, clientReconnectDelay) {
 				return
 			}
@@ -128,16 +133,7 @@ func (c *ClientService) runBusIDLoop(ctx context.Context, busid, description str
 		if ctx.Err() != nil {
 			return
 		}
-		retry := true
-		if !c.assignment.Matched() {
-			err = c.syncRemoteStateContext(ctx)
-			if err != nil {
-				c.logger.Warn("refresh remote exports after releasing ", busid, ": ", err)
-			} else {
-				retry = c.assignment.IsRetryDesired(busid)
-			}
-		}
-		if !retry {
+		if !c.shouldRetryBusID(ctx, busid) {
 			c.logger.Info("remote export ", busid, " disappeared; stopping import worker")
 			return
 		}
@@ -147,10 +143,22 @@ func (c *ClientService) runBusIDLoop(ctx context.Context, busid, description str
 	}
 }
 
+func (c *ClientService) shouldRetryBusID(ctx context.Context, busid string) bool {
+	if c.assignment.Matched() {
+		return true
+	}
+	err := c.syncRemoteStateContext(ctx)
+	if err != nil {
+		c.logger.Warn("refresh remote exports after releasing ", busid, ": ", err)
+		return true
+	}
+	return c.assignment.IsRetryDesired(busid)
+}
+
 func (c *ClientService) attemptAttach(ctx context.Context, busid string, expected DeviceMatch) (AttachedSession, error) {
 	conn, err := c.dialer.DialContext(ctx, N.NetworkTCP, c.serverAddr)
 	if err != nil {
-		return nil, E.Cause(err, "dial ", c.serverAddr)
+		return nil, E.Cause(errDialFailed, c.serverAddr.String(), ": ", err)
 	}
 	releaseConn := true
 	defer func() {
@@ -179,7 +187,7 @@ func (c *ClientService) attemptAttach(ctx context.Context, busid string, expecte
 		return nil, E.New("unexpected reply code ", fmt.Sprintf("0x%04x", header.Code))
 	}
 	if header.Status != OpStatusOK {
-		return nil, E.New("remote rejected import (status=", header.Status, ")")
+		return nil, E.Extend(errImportRejected, "status=", header.Status)
 	}
 	info, err := ReadOpRepImportBody(conn)
 	if err != nil {
