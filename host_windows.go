@@ -18,14 +18,15 @@ func newPlatformExportHost(ctx context.Context, logger logger.ContextLogger, mat
 	return newWindowsExportHost(ctx, logger, matches), nil
 }
 
-func ListLocalDevices() ([]DeviceEntry, error) {
+func ListLocalDevices() ([]LocalDeviceInfo, error) {
 	devices, err := vboxusb.EnumerateUSBDevices()
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]DeviceEntry, 0, len(devices))
+	entries := make([]LocalDeviceInfo, 0, len(devices))
 	for _, info := range devices {
-		entries = append(entries, windowsDeviceEntry(info))
+		entry := windowsDeviceEntry(info)
+		entries = append(entries, newLocalDeviceInfo("", BackendIDWindowsVBoxUSB, entry))
 	}
 	return entries, nil
 }

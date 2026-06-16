@@ -16,46 +16,9 @@ type DeviceTransport interface {
 	AbortEndpoint(endpoint uint8) error
 }
 
-type DynamicDeviceInfo struct {
-	BusID              string
-	BusNum             uint32
-	DevNum             uint32
-	Speed              uint32
-	VendorID           uint16
-	ProductID          uint16
-	BCDDevice          uint16
-	DeviceClass        uint8
-	DeviceSubClass     uint8
-	DeviceProtocol     uint8
-	ConfigurationValue uint8
-	NumConfigurations  uint8
-	Interfaces         []DeviceInterface
-	Serial             string
-	Product            string
-}
-
-func (info DynamicDeviceInfo) toEntry() DeviceEntry {
-	var truncated DeviceInfoTruncated
-	encodePathField(&truncated.Path, "/dynamic/"+info.BusID)
-	copy(truncated.BusID[:len(truncated.BusID)-1], info.BusID)
-	truncated.BusNum = info.BusNum
-	truncated.DevNum = info.DevNum
-	truncated.Speed = info.Speed
-	truncated.IDVendor = info.VendorID
-	truncated.IDProduct = info.ProductID
-	truncated.BCDDevice = info.BCDDevice
-	truncated.BDeviceClass = info.DeviceClass
-	truncated.BDeviceSubClass = info.DeviceSubClass
-	truncated.BDeviceProtocol = info.DeviceProtocol
-	truncated.BConfigurationValue = info.ConfigurationValue
-	truncated.BNumConfigurations = info.NumConfigurations
-	truncated.BNumInterfaces = uint8(len(info.Interfaces))
-	return DeviceEntry{
-		Info:       truncated,
-		Interfaces: info.Interfaces,
-		Serial:     info.Serial,
-		Product:    info.Product,
-	}
+type ProvidedDeviceInfo struct {
+	Entry    DeviceEntry
+	StableID string
 }
 
 type DynamicHost struct {
@@ -126,16 +89,17 @@ func (h *DynamicHost) FinishImport(busid string) (bool, error) {
 	return false, nil
 }
 
-func (h *DynamicHost) AddDevice(info DynamicDeviceInfo, transport DeviceTransport) (string, error) {
+func (h *DynamicHost) AddDevice(info ProvidedDeviceInfo, transport DeviceTransport) (string, error) {
 	if transport == nil {
 		return "", E.New("dynamic device: missing transport")
 	}
-	busid := info.BusID
+	entry := info.Entry
+	busid := entry.Info.BusIDString()
 	if busid == "" {
 		return "", E.New("dynamic device: missing bus id")
 	}
-	if len(busid) >= 32 {
-		return "", E.New("dynamic device: bus id too long: ", busid)
+	if err := setDeviceInfoBusID(&entry.Info, busid); err != nil {
+		return "", E.Cause(err, "dynamic device")
 	}
 	h.access.Lock()
 	defer h.access.Unlock()
@@ -146,16 +110,23 @@ func (h *DynamicHost) AddDevice(info DynamicDeviceInfo, transport DeviceTranspor
 	if exists {
 		return "", E.New("dynamic device already provided: ", busid)
 	}
-	if info.DevNum == 0 {
+	if entry.Info.DevNum == 0 {
 		h.nextDevNum++
-		info.DevNum = h.nextDevNum
+		entry.Info.DevNum = h.nextDevNum
 	}
-	if info.BusNum == 0 {
-		info.BusNum = 1
+	if entry.Info.BusNum == 0 {
+		entry.Info.BusNum = 1
+	}
+	if entry.Info.PathString() == "" {
+		encodePathField(&entry.Info.Path, "/dynamic/"+busid)
+	}
+	if entry.Info.BNumInterfaces == 0 && len(entry.Interfaces) > 0 {
+		entry.Info.BNumInterfaces = uint8(len(entry.Interfaces))
 	}
 	h.exports[busid] = &dynamicExport{
+		stableID:  info.StableID,
 		busid:     busid,
-		entry:     info.toEntry(),
+		entry:     entry,
 		transport: transport,
 		logger:    h.logger,
 	}
@@ -184,6 +155,7 @@ func (h *DynamicHost) notifyLocked() {
 }
 
 type dynamicExport struct {
+	stableID  string
 	busid     string
 	entry     DeviceEntry
 	transport DeviceTransport
@@ -199,10 +171,14 @@ func (e *dynamicExport) Snapshot(busy bool) ExportSnapshot {
 	if busy {
 		state = DeviceStateAttached
 	}
+	stableID := e.stableID
+	if stableID == "" {
+		stableID = BackendIDDynamic.String() + ":" + e.busid
+	}
 	return ExportSnapshot{
 		Entry:    e.entry,
 		Backend:  BackendIDDynamic,
-		StableID: BackendIDDynamic.String() + ":" + e.busid,
+		StableID: stableID,
 		State:    state,
 	}
 }

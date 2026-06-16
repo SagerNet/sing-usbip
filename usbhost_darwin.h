@@ -1,3 +1,7 @@
+#include <TargetConditionals.h>
+
+#if TARGET_OS_OSX
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -104,3 +108,5 @@ void box_usbhost_free_error(char *error);
 extern void box_usbip_darwin_controller_command(uintptr_t ref, IOUSBHostCIMessage message);
 extern void box_usbip_darwin_controller_doorbell(uintptr_t ref, uint32_t doorbell);
 extern void box_usbip_darwin_usb_event(uintptr_t ref);
+
+#endif

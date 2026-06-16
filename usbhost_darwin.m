@@ -1,3 +1,7 @@
+#include <TargetConditionals.h>
+
+#if TARGET_OS_OSX
+
 #import "usbhost_darwin.h"
 
 #import <Foundation/Foundation.h>
@@ -1088,3 +1092,5 @@ uint8_t box_usbhost_ci_iso_frame(const IOUSBHostCIMessage *message) {
 uint64_t box_usbhost_now(void) {
 	return mach_absolute_time();
 }
+
+#endif

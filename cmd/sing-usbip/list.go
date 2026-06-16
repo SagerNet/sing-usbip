@@ -54,13 +54,17 @@ func runList(_ *cobra.Command, _ []string) error {
 }
 
 func listLocalDevices() error {
-	entries, err := usbip.ListLocalDevices()
+	devices, err := usbip.ListLocalDevices()
 	if err != nil {
 		return err
 	}
-	if len(entries) == 0 {
+	if len(devices) == 0 {
 		fmt.Println("no local usb devices")
 		return nil
+	}
+	entries := make([]usbip.DeviceEntry, len(devices))
+	for i := range devices {
+		entries[i] = devices[i].Entry
 	}
 	return printDeviceEntries(entries)
 }

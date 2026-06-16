@@ -33,22 +33,23 @@ func newPlatformImportHost(logger logger.ContextLogger) (ImportHost, error) {
 	}, nil
 }
 
-func ListLocalDevices() ([]DeviceEntry, error) {
+func ListLocalDevices() ([]LocalDeviceInfo, error) {
 	devices, err := listUSBDevices()
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]DeviceEntry, 0, len(devices))
+	entries := make([]LocalDeviceInfo, 0, len(devices))
 	for i := range devices {
 		if devices[i].DeviceClass == 0x09 {
 			continue
 		}
-		entries = append(entries, DeviceEntry{
+		entry := DeviceEntry{
 			Info:       devices[i].toProtocol(),
 			Interfaces: devices[i].Interfaces,
 			Serial:     devices[i].Serial,
 			Product:    devices[i].Product,
-		})
+		}
+		entries = append(entries, newLocalDeviceInfo("", BackendIDLinuxSysfs, entry))
 	}
 	return entries, nil
 }

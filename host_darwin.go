@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && !ios && cgo
 
 package usbip
 
@@ -22,17 +22,23 @@ func newPlatformImportHost(logger logger.ContextLogger) (ImportHost, error) {
 	return &darwinImportHost{logger: logger}, nil
 }
 
-func ListLocalDevices() ([]DeviceEntry, error) {
+const darwinLocalDeviceIDPrefix = "darwin-registry:"
+
+func darwinStableID(registryID uint64) string {
+	return fmt.Sprintf("%s%016x", darwinLocalDeviceIDPrefix, registryID)
+}
+
+func ListLocalDevices() ([]LocalDeviceInfo, error) {
 	devices, err := darwinCopyUSBHostDevices()
 	if err != nil {
 		return nil, err
 	}
-	entries := make([]DeviceEntry, 0, len(devices))
+	entries := make([]LocalDeviceInfo, 0, len(devices))
 	for i := range devices {
 		if devices[i].entry.Info.BDeviceClass == 0x09 {
 			continue
 		}
-		entries = append(entries, devices[i].entry)
+		entries = append(entries, newLocalDeviceInfo(darwinStableID(devices[i].registryID), BackendIDDarwinIOKit, devices[i].entry))
 	}
 	return entries, nil
 }
@@ -324,7 +330,7 @@ func (e *darwinExport) staleReason() string {
 }
 
 func (e *darwinExport) Snapshot(busy bool) ExportSnapshot {
-	stableID := fmt.Sprintf("darwin-registry:%016x", e.registryID)
+	stableID := darwinStableID(e.registryID)
 	if e.stale {
 		return ExportSnapshot{
 			Entry:        e.entry,
