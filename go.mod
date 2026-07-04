@@ -1,12 +1,12 @@
 module github.com/sagernet/sing-usbip
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/sagernet/sing v0.8.11-0.20260514110501-905ad103a4df
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/sys v0.41.0
-	golang.org/x/term v0.40.0
+	golang.org/x/sys v0.45.0
+	golang.org/x/term v0.43.0
 )
 
 require (
