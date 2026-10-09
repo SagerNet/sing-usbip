@@ -83,9 +83,12 @@ bool box_usbhost_device_sm_respond_create(box_usbhost_device_sm_t *device, const
 box_usbhost_endpoint_sm_t *box_usbhost_endpoint_sm_create(box_usbhost_controller_t *controller, const IOUSBHostCIMessage *command, char **error_out);
 void box_usbhost_endpoint_sm_destroy(box_usbhost_endpoint_sm_t *endpoint);
 bool box_usbhost_endpoint_sm_respond(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *command, int status, char **error_out);
+bool box_usbhost_endpoint_sm_inspect(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *command, char **error_out);
+bool box_usbhost_endpoint_sm_respond_inspected(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *command, int status, char **error_out);
 bool box_usbhost_endpoint_sm_process_doorbell(box_usbhost_endpoint_sm_t *endpoint, uint32_t doorbell, char **error_out);
 const IOUSBHostCIMessage *box_usbhost_endpoint_sm_current_transfer(box_usbhost_endpoint_sm_t *endpoint);
 bool box_usbhost_endpoint_sm_complete(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *message, int status, size_t transfer_length, char **error_out);
+uint8_t box_usbhost_endpoint_sm_state(box_usbhost_endpoint_sm_t *endpoint);
 
 uint8_t box_usbhost_ci_message_type(const IOUSBHostCIMessage *message);
 uint8_t box_usbhost_ci_message_status(const IOUSBHostCIMessage *message);

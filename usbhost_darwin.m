@@ -1008,6 +1008,26 @@ bool box_usbhost_endpoint_sm_respond(box_usbhost_endpoint_sm_t *endpoint, const 
 	return ok;
 }
 
+bool box_usbhost_endpoint_sm_inspect(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *command, char **error_out) {
+	IOUSBHostCIEndpointStateMachine *state_machine = box_endpoint_sm(endpoint);
+	NSError *error = nil;
+	if (![state_machine inspectCommand:command error:&error]) {
+		box_set_error_from_nserror(error_out, @"IOUSBHostCIEndpointStateMachine inspectCommand", error);
+		return false;
+	}
+	return true;
+}
+
+bool box_usbhost_endpoint_sm_respond_inspected(box_usbhost_endpoint_sm_t *endpoint, const IOUSBHostCIMessage *command, int status, char **error_out) {
+	IOUSBHostCIEndpointStateMachine *state_machine = box_endpoint_sm(endpoint);
+	NSError *error = nil;
+	BOOL ok = [state_machine respondToCommand:command status:(IOUSBHostCIMessageStatus)status error:&error];
+	if (!ok) {
+		box_set_error_from_nserror(error_out, @"IOUSBHostCIEndpointStateMachine respondToCommand", error);
+	}
+	return ok;
+}
+
 bool box_usbhost_endpoint_sm_process_doorbell(box_usbhost_endpoint_sm_t *endpoint, uint32_t doorbell, char **error_out) {
 	IOUSBHostCIEndpointStateMachine *state_machine = box_endpoint_sm(endpoint);
 	NSError *error = nil;
@@ -1031,6 +1051,11 @@ bool box_usbhost_endpoint_sm_complete(box_usbhost_endpoint_sm_t *endpoint, const
 		box_set_error_from_nserror(error_out, @"IOUSBHostCIEndpointStateMachine enqueueTransferCompletion", error);
 	}
 	return ok;
+}
+
+uint8_t box_usbhost_endpoint_sm_state(box_usbhost_endpoint_sm_t *endpoint) {
+	IOUSBHostCIEndpointStateMachine *state_machine = box_endpoint_sm(endpoint);
+	return state_machine == nil ? 0 : (uint8_t)state_machine.endpointState;
 }
 
 uint8_t box_usbhost_ci_message_type(const IOUSBHostCIMessage *message) {

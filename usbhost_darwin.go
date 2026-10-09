@@ -23,11 +23,14 @@ import (
 )
 
 const (
-	ciStatusSuccess     = 1
-	ciStatusNoResources = 6
+	ciStatusSuccess      = 1
+	ciStatusNotPermitted = 3
+	ciStatusNoResources  = 6
 	// the completion status the SDK requires for transfers retired by an
 	// EndpointPause command rather than by actual completion.
 	ciStatusEndpointStopped = 7
+
+	ciEndpointStateHalted = 1
 
 	ciMsgControllerPowerOn     = 0x10
 	ciMsgControllerPowerOff    = 0x11
@@ -293,6 +296,31 @@ func (s *darwinUSBHostEndpointSM) respond(message darwinCIMessage, status int) e
 		return darwinCError(errorPtr)
 	}
 	return nil
+}
+
+// inspect and respondInspected split respond so a command's transfer
+// completions can be enqueued between them, in the order the SDK documents
+// for EndpointPause and EndpointDestroy.
+func (s *darwinUSBHostEndpointSM) inspect(message darwinCIMessage) error {
+	cMessage := message.c()
+	var errorPtr *C.char
+	if !bool(C.box_usbhost_endpoint_sm_inspect(s.handle, &cMessage, &errorPtr)) {
+		return darwinCError(errorPtr)
+	}
+	return nil
+}
+
+func (s *darwinUSBHostEndpointSM) respondInspected(message darwinCIMessage, status int) error {
+	cMessage := message.c()
+	var errorPtr *C.char
+	if !bool(C.box_usbhost_endpoint_sm_respond_inspected(s.handle, &cMessage, C.int(status), &errorPtr)) {
+		return darwinCError(errorPtr)
+	}
+	return nil
+}
+
+func (s *darwinUSBHostEndpointSM) state() uint8 {
+	return uint8(C.box_usbhost_endpoint_sm_state(s.handle))
 }
 
 func (s *darwinUSBHostEndpointSM) processDoorbell(doorbell uint32) error {

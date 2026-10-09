@@ -5,6 +5,7 @@ package usbip
 import (
 	"context"
 	"errors"
+	"time"
 	"unsafe"
 
 	E "github.com/sagernet/sing/common/exceptions"
@@ -33,13 +34,20 @@ type darwinEndpoint struct {
 }
 
 type pendingTransfer struct {
-	transaction *UrbTransaction
-	transfer    darwinCITransfer
-	direction   uint32
-	requestLen  int
-	bufferPtr   unsafe.Pointer
-	noResponse  bool
+	transaction   *UrbTransaction
+	transfer      darwinCITransfer
+	direction     uint32
+	requestLen    int
+	bufferPtr     unsafe.Pointer
+	noResponse    bool
+	controlStatus bool
 }
+
+// darwinControlPauseGrace bounds how long an EndpointPause on a control
+// endpoint waits for the in-flight request to finish before falling back to
+// CMD_UNLINK. It stays well below the 2 s command timeout advertised in the
+// controller capabilities.
+const darwinControlPauseGrace = 500 * time.Millisecond
 
 func newDarwinEndpoint(ctx context.Context, logger logger.ContextLogger, stateMachine *darwinUSBHostEndpointSM, peer *UsbIpPeer, currentFrame func() uint64, devID uint32, key darwinEndpointKey) *darwinEndpoint {
 	ctx, cancel := context.WithCancel(ctx)
@@ -100,9 +108,9 @@ func (e *darwinEndpoint) worker() {
 				e.abortPending(pending, false)
 				return
 			case message := <-e.commandCh:
-				e.abortPending(pending, true)
+				done := e.handleCommand(message, pending)
 				pending = nil
-				if e.handleCommand(message) {
+				if done {
 					return
 				}
 				pendingDoorbell = false
@@ -139,7 +147,7 @@ func (e *darwinEndpoint) worker() {
 		case <-e.ctx.Done():
 			return
 		case message := <-e.commandCh:
-			if e.handleCommand(message) {
+			if e.handleCommand(message, nil) {
 				return
 			}
 		case doorbell := <-e.doorbellCh:
@@ -153,12 +161,55 @@ func (e *darwinEndpoint) worker() {
 	}
 }
 
-func (e *darwinEndpoint) handleCommand(message darwinCIMessage) bool {
-	err := e.stateMachine.respond(message, ciStatusSuccess)
-	if err != nil {
-		e.logger.Debug("respond endpoint command: ", err)
+// handleCommand inspects the command before retiring the in-flight transfer,
+// so the state machine knows the endpoint is being paused or destroyed when
+// the transfer's completion is enqueued, then responds.
+func (e *darwinEndpoint) handleCommand(message darwinCIMessage, pending *pendingTransfer) bool {
+	inspectErr := e.stateMachine.inspect(message)
+	if pending != nil {
+		e.retirePending(pending, message)
+	}
+	if inspectErr != nil {
+		e.logger.Debug("inspect endpoint command: ", inspectErr)
+	} else {
+		status := ciStatusSuccess
+		if message.messageType() == ciMsgEndpointPause && e.stateMachine.state() == ciEndpointStateHalted {
+			// The request in flight failed (for example a STALLed
+			// GET_DESCRIPTOR) while the pause was pending, so its completion
+			// halted the endpoint and it can no longer become Paused. The
+			// state machine refuses a Success response here and an
+			// unanswered command is fatal.
+			status = ciStatusNotPermitted
+		}
+		err := e.stateMachine.respondInspected(message, status)
+		if err != nil {
+			e.logger.Debug("respond endpoint command: ", err)
+		}
 	}
 	return message.messageType() == ciMsgEndpointDestroy
+}
+
+// retirePending quiesces the transfer in flight when a command arrives. A
+// control request that is already on its way to the device (for example the
+// SET_CONFIGURATION the kernel pauses endpoint 0 around) is allowed to finish
+// and reports its real status: canceling it leaves the device state unknown,
+// and the kernel later resumes the stopped status stage, which then cannot
+// be replayed faithfully.
+func (e *darwinEndpoint) retirePending(pending *pendingTransfer, message darwinCIMessage) {
+	if e.key.endpoint == 0 && message.messageType() == ciMsgEndpointPause {
+		timer := time.NewTimer(darwinControlPauseGrace)
+		defer timer.Stop()
+		select {
+		case <-pending.transaction.Done():
+			e.finalizePending(pending)
+			return
+		case <-e.peer.Done():
+			e.finalizePending(pending)
+			return
+		case <-timer.C:
+		}
+	}
+	e.abortPending(pending, true)
 }
 
 // A transfer retired by a driver command (EndpointPause and its follow-ups)
@@ -210,6 +261,9 @@ func (e *darwinEndpoint) finalizePending(pending *pendingTransfer) {
 			e.logger.Debug("RET_SUBMIT validation: ", acceptErr, " (request length ", pending.requestLen, ")")
 			e.cancel()
 		}
+	}
+	if pending.controlStatus {
+		e.setupSet = false
 	}
 	if pending.noResponse {
 		return
@@ -302,9 +356,12 @@ func (e *darwinEndpoint) startControlStatusTransfer(transfer darwinCITransfer, n
 		}
 		return nil
 	}
+	// The setup packet is kept until the status stage completes, so a status
+	// stage stopped by EndpointPause and later resumed re-issues the request
+	// instead of reporting success for a request that was canceled.
 	setup := e.setup
-	e.setupSet = false
 	if setup[6] != 0 || setup[7] != 0 {
+		e.setupSet = false
 		if !noResponse {
 			_ = e.stateMachine.complete(transfer, ciStatusSuccess, 0)
 		}
@@ -327,10 +384,11 @@ func (e *darwinEndpoint) startControlStatusTransfer(transfer darwinCITransfer, n
 		return nil
 	}
 	return &pendingTransfer{
-		transaction: transaction,
-		transfer:    transfer,
-		direction:   USBIPDirOut,
-		noResponse:  noResponse,
+		transaction:   transaction,
+		transfer:      transfer,
+		direction:     USBIPDirOut,
+		noResponse:    noResponse,
+		controlStatus: true,
 	}
 }
 
