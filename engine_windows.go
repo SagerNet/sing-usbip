@@ -88,7 +88,7 @@ func (e *vboxusbEngine) controlSubmit(req URBRequest) URBResponse {
 	urb := &vboxusb.URB{
 		Type:      vboxusb.TransferTypeMessage,
 		Endpoint:  0,
-		Direction: vboxusb.DirectionSetup,
+		Direction: directionFromCommand(command.Header.Direction),
 		Length:    uint64(len(combined)),
 		Buffer:    combined,
 	}
